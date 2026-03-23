@@ -480,44 +480,88 @@ const APP = (() => {
   }
 
   // ── RECEIPT DATA EXTRACTION ──────────────────────
+
+  // 電話番号パターン（日付より先に除外する）
+  const PHONE_PAT = /0\d{1,4}[-－ー]\d{2,4}[-－ー]\d{3,4}/g;
+
+  // 既知チェーン店リスト（OCR文字化けパターンも含む）
+  const KNOWN_STORES = [
+    ['ローソン',         /LAWSON|LOWSON|LAWSONS|ローソン/i],
+    ['ファミリーマート', /FAMILYMART|ファミリーマート|ファミマ/i],
+    ['セブン-イレブン',  /7.?ELEVEN|SEVEN.ELEVEN|セブンイレブン/i],
+    ['ミニストップ',     /MINISTOP|ミニストップ/i],
+    ['デイリーヤマザキ', /DAILY.?YAMAZAKI|デイリーヤマザキ/i],
+    ['イオン',           /AEON|イオン/i],
+    ['イトーヨーカドー', /ITO.?YOKADO|イトーヨーカドー/i],
+    ['西友',             /SEIYU|西友/i],
+    ['ライフ',           /LIFE.CORP|ライフ/i],
+    ['マツモトキヨシ',   /MATSUKIYO|MATSUMOTOKIYOSHI|マツキヨ|マツモトキヨシ/i],
+    ['ウエルシア',       /WELCIA|ウエルシア/i],
+    ['ツルハ',           /TSURUHA|ツルハ/i],
+    ['ENEOS',            /ENEOS|ENEJET/i],
+    ['出光',             /IDEMITSU|出光/i],
+    ['コスモ石油',       /COSMO|コスモ石油/i],
+    ['シェル',           /SHELL|シェル/i],
+    ['マクドナルド',     /MCDONALDS|MCDONALD|マクドナルド/i],
+    ['すき家',           /SUKIYA|すき家/i],
+    ['吉野家',           /YOSHINOYA|吉野家/i],
+    ['松屋',             /MATSUYA.FOODS|松屋フーズ|松屋/i],
+  ];
+
   function extractReceiptData(text) {
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const lines    = text.split('\n').map(l => l.trim()).filter(Boolean);
     const fullText = text;
 
-    // ── 店名・会社名 ──
-    // 最初の意味ある行（短すぎ・数字だけは除外）
-    let shop = '';
-    for (const line of lines) {
-      if (line.length >= 2 && !/^[\d\s\-\/\.¥￥*]+$/.test(line) && line.length <= 40) {
-        shop = line
-          .replace(/^(領収書|レシート|RECEIPT|receipt)/i, '')
-          .replace(/[　\s]+/g, ' ').trim();
-        if (shop.length >= 2) break;
-      }
-    }
+    // ── 電話番号を先に除外したテキストを作成 ──
+    const textNoPhone = fullText.replace(PHONE_PAT, ' ');
 
-    // ── 日付 ──
+    // ── 日付（電話番号除外後のテキストで検索）──
     let date = '';
     const datePatterns = [
       // 2024年3月15日 / 2024年03月15日
-      /(\d{4})[年\/\-\.](\d{1,2})[月\/\-\.](\d{1,2})[日]?/,
-      // R6.3.15 / R06.03.15（令和）
-      /R(\d{1,2})[\.\/年](\d{1,2})[\.\/月](\d{1,2})/i,
-      // 24.3.15
-      /(\d{2})[\.\/](\d{1,2})[\.\/](\d{1,2})/,
+      { re: /(\d{4})[年](\d{1,2})[月](\d{1,2})[日]?/, type: 'ymd4' },
+      // 2024/3/15 or 2024-3-15（4桁年・スラッシュかハイフン）
+      { re: /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?!\d)/, type: 'ymd4' },
+      // R6.3.15（令和）
+      { re: /R(\d{1,2})[\.\/年](\d{1,2})[\.\/月](\d{1,2})/, type: 'reiwa' },
+      // 26/3/15 or 26.3.15（2桁年・月が1-12・日が1-31の範囲）
+      { re: /(?<!\d)(\d{2})[\/\.](\d{1,2})[\/\.](\d{1,2})(?!\d)/, type: 'ymd2' },
     ];
-    for (const pat of datePatterns) {
-      const m = fullText.match(pat);
-      if (m) {
-        if (pat.source.startsWith('R')) {
-          const year = 2018 + parseInt(m[1]);
-          date = `${year}/${String(m[2]).padStart(2,'0')}/${String(m[3]).padStart(2,'0')}`;
-        } else if (m[1].length === 2) {
-          date = `20${m[1]}/${String(m[2]).padStart(2,'0')}/${String(m[3]).padStart(2,'0')}`;
-        } else {
-          date = `${m[1]}/${String(m[2]).padStart(2,'0')}/${String(m[3]).padStart(2,'0')}`;
-        }
-        break;
+    for (const { re, type } of datePatterns) {
+      const m = textNoPhone.match(re);
+      if (!m) continue;
+      let y, mo, d;
+      if (type === 'reiwa') {
+        y = 2018 + parseInt(m[1]); mo = parseInt(m[2]); d = parseInt(m[3]);
+      } else if (type === 'ymd2') {
+        y = 2000 + parseInt(m[1]); mo = parseInt(m[2]); d = parseInt(m[3]);
+      } else {
+        y = parseInt(m[1]); mo = parseInt(m[2]); d = parseInt(m[3]);
+      }
+      // 月1-12・日1-31の範囲チェック（電話番号の誤検出を防ぐ）
+      if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+      date = `${y}/${String(mo).padStart(2,'0')}/${String(d).padStart(2,'0')}`;
+      break;
+    }
+
+    // ── 店名・会社名 ──
+    let shop = '';
+    // ① 既知チェーン店を全文から優先マッチ
+    for (const [name, pat] of KNOWN_STORES) {
+      if (pat.test(fullText)) { shop = name; break; }
+    }
+    // ② 見つからなければ最初の有効行から抽出
+    if (!shop) {
+      for (const line of lines) {
+        const cleaned = line
+          .replace(PHONE_PAT, '')
+          .replace(/^(領収書|レシート|RECEIPT|receipt)/i, '')
+          .replace(/[　\s]+/g, ' ').trim();
+        if (
+          cleaned.length >= 2 && cleaned.length <= 40
+          && !/^[\d\s\-\/\.¥￥*＊#＃()（）]+$/.test(cleaned)
+          && !/^\d{2,4}[\/\-\.]\d{1,2}/.test(cleaned) // 日付行スキップ
+        ) { shop = cleaned; break; }
       }
     }
 
@@ -526,15 +570,13 @@ const APP = (() => {
       for (const pat of patterns) {
         const m = fullText.match(pat);
         if (m) {
-          const raw = m[1].replace(/[,，、\s]/g, '');
-          const n = parseInt(raw);
+          const n = parseInt(m[1].replace(/[,，、\s]/g, ''));
           if (!isNaN(n) && n > 0 && n < 10000000) return n;
         }
       }
       return '';
     };
 
-    // ── 合計金額 ──
     const total = extractAmount([
       /合[計計]\s*[¥￥]?\s*([\d,，]+)/,
       /[Tt][Oo][Tt][Aa][Ll]\s*[¥￥]?\s*([\d,，]+)/,
@@ -542,35 +584,27 @@ const APP = (() => {
       /小[計計]\s*[¥￥]?\s*([\d,，]+)/,
       /[¥￥]\s*([\d,，]{3,7})\s*$/m,
     ]);
-
-    // ── 税抜金額 ──
     const pretax = extractAmount([
       /税[抜抜][金額]?\s*[¥￥]?\s*([\d,，]+)/,
       /[（(]税[抜抜][）)]\s*[¥￥]?\s*([\d,，]+)/,
       /本[体体]\s*[¥￥]?\s*([\d,，]+)/,
       /[Ss]ub[-\s]?[Tt]otal\s*[¥￥]?\s*([\d,，]+)/,
     ]);
-
-    // ── 消費税10% ──
     const tax10 = extractAmount([
       /(?:消費税|税)[（(]?10%[）)]?\s*[¥￥]?\s*([\d,，]+)/,
       /10%[対対象象]?\s*(?:税額|消費税|内税)?\s*[¥￥]?\s*([\d,，]+)/,
       /税[（(]10[）)]\s*[¥￥]?\s*([\d,，]+)/,
     ]);
-
-    // ── 消費税8% ──
     const tax8 = extractAmount([
       /(?:消費税|税)[（(]?8%[）)]?\s*[¥￥]?\s*([\d,，]+)/,
       /8%[対対象象]?\s*(?:税額|消費税|内税)?\s*[¥￥]?\s*([\d,，]+)/,
       /税[（(]8[）)]\s*[¥￥]?\s*([\d,，]+)/,
     ]);
 
-    // ── インボイス登録番号 ──
     let invoice = '';
     const invMatch = fullText.match(/T(\d{13})/);
     if (invMatch) invoice = 'T' + invMatch[1];
 
-    // ── 精度スコア（検出できた項目数で判定） ──
     const detected = [shop, date, total, pretax || tax10 || tax8, invoice].filter(v => v !== '').length;
     const confidence = detected >= 4 ? 'high' : detected >= 2 ? 'mid' : 'low';
     const confLabel  = detected >= 4 ? `高 (${detected}/5項目)` : detected >= 2 ? `中 (${detected}/5項目)` : `低 (${detected}/5項目)`;
