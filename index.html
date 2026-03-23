@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#070711">
+  <title>DocScan AI</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    var Module = { onRuntimeInitialized: function() { APP && APP.onCVReady(); } };
+  </script>
+  <script async src="https://docs.opencv.org/4.10.0/opencv.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      background: #070711; color: #f0f0fa;
+      overflow: hidden; position: fixed; width: 100%;
+      -webkit-font-smoothing: antialiased;
+    }
+    .screen { display: none; position: fixed; inset: 0; flex-direction: column; background: #070711; }
+    .screen.active { display: flex; }
+    .scroll-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+```
+@keyframes spin      { to { transform: rotate(360deg); } }
+@keyframes spin-rev  { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
+@keyframes fade-up   { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fade-in   { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse-ring { 0% { transform: scale(0.95); opacity: 0.8; } 100% { transform: scale(1.55); opacity: 0; } }
+@keyframes scan-move { 0%, 100% { top: 12%; } 50% { top: 83%; } }
+@keyframes blink     { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
+@keyframes c-glow    { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+@keyframes flash-wh  { 0% { opacity: 0.7; } 100% { opacity: 0; } }
+
+.btn { display: block; width: 100%; padding: 15px; border: none; border-radius: 14px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; text-align: center; transition: opacity 0.15s, background 0.2s; }
+.btn:active { opacity: 0.78; }
+.btn-primary   { background: #00e5b0; color: #070711; }
+.btn-secondary { background: #0f0f1e; color: #f0f0fa; border: 1px solid #1e1e35; }
+.btn-indigo    { background: rgba(99,102,241,0.14); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); }
+.btn-danger    { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+.btn-sm { padding: 11px 10px; font-size: 13px; }
+
+.nav-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: #0f0f1e; border-bottom: 1px solid #1e1e35; flex-shrink: 0; }
+.nav-title { font-size: 16px; font-weight: 600; }
+.nav-btn { background: transparent; border: none; color: #6b7280; font-size: 15px; font-family: inherit; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+.nav-btn-accent { background: transparent; border: none; color: #00e5b0; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; }
+
+.tab-bar { display: flex; background: #0f0f1e; border-radius: 12px; padding: 4px; border: 1px solid #1e1e35; }
+.tab-btn { flex: 1; padding: 10px 6px; border: none; border-radius: 9px; background: transparent; color: #6b7280; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.2s; }
+.tab-btn.active { background: #00e5b0; color: #070711; }
+
+.feat-card { display: flex; align-items: center; gap: 13px; padding: 13px 15px; background: #0f0f1e; border-radius: 13px; margin-bottom: 8px; border: 1px solid #1e1e35; }
+
+.thumb { position: relative; border-radius: 12px; overflow: hidden; background: #0f0f1e; border: 1px solid #1e1e35; aspect-ratio: 3/4; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-num { position: absolute; bottom: 6px; left: 8px; background: rgba(7,7,17,0.82); color: #f0f0fa; font-size: 11px; font-weight: 600; padding: 3px 7px; border-radius: 6px; }
+.thumb-del { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; background: rgba(239,68,68,0.88); border: none; border-radius: 50%; color: white; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; background: #0f0f1e; border-radius: 12px; border: 1px solid #1e1e35; }
+.toggle-sw { width: 44px; height: 26px; border-radius: 13px; background: #1e1e35; position: relative; cursor: pointer; transition: background 0.25s; border: none; flex-shrink: 0; padding: 0; }
+.toggle-sw.on { background: #00e5b0; }
+.toggle-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: white; transition: transform 0.25s; pointer-events: none; }
+.toggle-sw.on .toggle-knob { transform: translateX(18px); }
+
+.quality-badge { display: inline-block; padding: 7px 13px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-bottom: 11px; }
+.q-good { background: rgba(0,229,176,0.1); border: 1px solid rgba(0,229,176,0.3); color: #00e5b0; }
+.q-fair { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #f59e0b; }
+.q-poor { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+
+.error-banner { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 11px 15px; font-size: 13px; color: #fca5a5; text-align: center; line-height: 1.5; }
+.spinner { border: 3px solid #1e1e35; border-top-color: #00e5b0; border-radius: 50%; animation: spin 0.9s linear infinite; }
+
+#ocr-overlay { display: none; position: fixed; inset: 0; background: rgba(7,7,17,0.97); z-index: 300; flex-direction: column; animation: fade-in 0.2s ease; }
+#ocr-overlay.active { display: flex; }
+#history-overlay { display: none; position: fixed; inset: 0; background: #070711; z-index: 200; flex-direction: column; animation: fade-in 0.18s ease; }
+#history-overlay.active { display: flex; }
+#session-overlay { display: none; position: fixed; inset: 0; background: #070711; z-index: 250; flex-direction: column; animation: fade-in 0.18s ease; }
+#session-overlay.active { display: flex; }
+
+.safe-bottom { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+.divider { display: flex; align-items: center; gap: 12px; margin: 6px 0; }
+.divider-line { flex: 1; height: 1px; background: #1e1e35; }
+.divider span { font-size: 12px; color: #6b7280; }
+
+.hist-card { display: flex; align-items: center; gap: 14px; padding: 13px 14px; background: #0f0f1e; border-radius: 14px; border: 1px solid #1e1e35; margin-bottom: 10px; cursor: pointer; transition: border-color 0.15s; }
+.hist-card:active { border-color: #00e5b0; }
+.hist-thumb { width: 52px; height: 68px; border-radius: 8px; object-fit: cover; border: 1px solid #1e1e35; flex-shrink: 0; background: #161627; }
+.hist-del { background: transparent; border: none; color: #6b7280; font-size: 18px; cursor: pointer; padding: 6px; flex-shrink: 0; }
+
+#auto-toggle-btn { width: 50px; height: 50px; border-radius: 50%; border: 2px solid #1e1e35; background: rgba(7,7,17,0.7); color: #6b7280; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: border-color 0.25s, color 0.25s, background 0.25s; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+#auto-toggle-btn.active { border-color: #00e5b0; color: #00e5b0; background: rgba(0,229,176,0.12); }
+#detect-flash { position: absolute; inset: 0; background: white; opacity: 0; pointer-events: none; }
+```
+
+  </style>
+</head>
+<body>
+
+<!-- HOME -->
+
+<div id="screen-home" class="screen active">
+  <div class="scroll-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 22px 32px;min-height:100%;">
+    <div style="text-align:center;margin-bottom:32px;animation:fade-up 0.55s ease both;">
+      <div style="position:relative;width:86px;height:86px;margin:0 auto 18px;">
+        <div style="position:absolute;inset:0;border-radius:26px;border:2px solid #00e5b0;animation:pulse-ring 2.2s ease-out infinite;"></div>
+        <div style="position:absolute;inset:0;border-radius:26px;border:2px solid #00e5b0;animation:pulse-ring 2.2s ease-out infinite 0.75s;"></div>
+        <div style="position:relative;width:100%;height:100%;border-radius:26px;background:#0f0f1e;border:1px solid #1e1e35;display:flex;align-items:center;justify-content:center;">
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#00e5b0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 3H3v2M19 3h2v2M5 21H3v-2M19 21h2v-2"/><rect x="7" y="7" width="10" height="10" rx="2"/>
+            <line x1="12" y1="7" x2="12" y2="17" stroke-opacity="0.35"/><line x1="7" y1="12" x2="17" y2="12" stroke-opacity="0.35"/>
+          </svg>
+        </div>
+      </div>
+      <h1 style="font-size:30px;font-weight:700;margin:0 0 6px;letter-spacing:-0.5px;">DocScan AI</h1>
+      <p style="font-size:13px;color:#6b7280;margin:0;">Phase 1〜5 完全実装</p>
+    </div>
+
+```
+<div id="cv-status" style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#0f0f1e;border:1px solid #1e1e35;border-radius:20px;margin-bottom:18px;font-size:12px;color:#6b7280;animation:fade-up 0.5s ease 0.08s both;">
+  <div id="cv-dot" style="width:7px;height:7px;border-radius:50%;background:#f59e0b;animation:blink 1.2s ease-in-out infinite;flex-shrink:0;"></div>
+  <span id="cv-text">OpenCV.js 読み込み中...</span>
+</div>
+
+<div style="width:100%;max-width:360px;margin-bottom:22px;">
+  <div class="feat-card" style="animation:fade-up 0.5s ease 0.12s both;"><span style="font-size:20px;">📷</span><div><div style="font-size:14px;font-weight:600;">カメラ撮影 / 画像読み込み</div><div style="font-size:12px;color:#6b7280;margin-top:2px;">Claude AIが文書コーナーを自動検出</div></div></div>
+  <div class="feat-card" style="animation:fade-up 0.5s ease 0.18s both;"><span style="font-size:20px;">🔲</span><div><div style="font-size:14px;font-weight:600;">OpenCV.js 射影変換</div><div style="font-size:12px;color:#6b7280;margin-top:2px;">正確な台形・パース歪み補正</div></div></div>
+  <div class="feat-card" style="animation:fade-up 0.5s ease 0.24s both;"><span style="font-size:20px;">🤖</span><div><div style="font-size:14px;font-weight:600;">自動撮影 <span style="color:#00e5b0;font-size:11px;background:rgba(0,229,176,0.1);padding:2px 7px;border-radius:6px;margin-left:4px;">Phase 4</span></div><div style="font-size:12px;color:#6b7280;margin-top:2px;">文書を検出したら自動シャッター</div></div></div>
+  <div class="feat-card" style="animation:fade-up 0.5s ease 0.30s both;"><span style="font-size:20px;">📄</span><div><div style="font-size:14px;font-weight:600;">複数ページ → PDF結合</div><div style="font-size:12px;color:#6b7280;margin-top:2px;">何枚でも追加して1つのPDFに</div></div></div>
+  <div class="feat-card" style="animation:fade-up 0.5s ease 0.36s both;"><span style="font-size:20px;">🗂</span><div><div style="font-size:14px;font-weight:600;">スキャン履歴 <span style="color:#818cf8;font-size:11px;background:rgba(99,102,241,0.12);padding:2px 7px;border-radius:6px;margin-left:4px;">Phase 5</span></div><div style="font-size:12px;color:#6b7280;margin-top:2px;">IndexedDBにオフライン保存・管理</div></div></div>
+</div>
+
+<div id="home-error" style="display:none;width:100%;max-width:360px;margin-bottom:12px;" class="error-banner"></div>
+
+<div style="width:100%;max-width:360px;animation:fade-up 0.5s ease 0.44s both;">
+  <button class="btn btn-primary" onclick="APP.startCamera()" style="font-size:17px;padding:18px;border-radius:18px;margin-bottom:10px;">📷 カメラでスキャン</button>
+  <div class="divider"><div class="divider-line"></div><span>または</span><div class="divider-line"></div></div>
+  <button class="btn btn-secondary" onclick="document.getElementById('file-input').click()" style="margin-top:10px;">🖼 画像ファイルを選択</button>
+  <input id="file-input" type="file" accept="image/*" style="display:none;" onchange="APP.handleFile(event)">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px;">
+    <button class="btn btn-secondary btn-sm" onclick="APP.openHistory()" style="padding:13px;">🗂 スキャン履歴</button>
+    <div id="home-pages-wrapper" style="display:none;">
+      <button class="btn btn-indigo btn-sm" onclick="APP.goToPages()" style="padding:13px;">📂 <span id="home-pages-count">0</span>枚 確認</button>
+    </div>
+  </div>
+  <p style="text-align:center;font-size:11px;color:#6b7280;margin-top:14px;line-height:1.5;">画像はAI処理のみに使用されます</p>
+</div>
+```
+
+  </div>
+</div>
+
+<!-- CAMERA -->
+
+<div id="screen-camera" class="screen" style="background:#000;">
+  <div style="flex:1;position:relative;overflow:hidden;">
+    <video id="camera-video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
+    <!-- Quad detection overlay -->
+    <canvas id="detect-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:0;transition:opacity 0.3s;"></canvas>
+    <!-- Capture flash -->
+    <div id="detect-flash"></div>
+    <!-- Manual frame guides -->
+    <div id="camera-overlay" style="position:absolute;inset:0;pointer-events:none;display:none;">
+      <div style="position:absolute;top:0;left:0;right:0;height:12%;background:rgba(0,0,0,0.5);"></div>
+      <div style="position:absolute;bottom:0;left:0;right:0;height:12%;background:rgba(0,0,0,0.5);"></div>
+      <div style="position:absolute;top:12%;left:0;width:8%;bottom:12%;background:rgba(0,0,0,0.5);"></div>
+      <div style="position:absolute;top:12%;right:0;width:8%;bottom:12%;background:rgba(0,0,0,0.5);"></div>
+      <div style="position:absolute;top:12%;left:8%;width:30px;height:30px;border-top:3px solid #00e5b0;border-left:3px solid #00e5b0;animation:c-glow 2s ease-in-out infinite;"></div>
+      <div style="position:absolute;top:12%;right:8%;width:30px;height:30px;border-top:3px solid #00e5b0;border-right:3px solid #00e5b0;animation:c-glow 2s ease-in-out infinite;"></div>
+      <div style="position:absolute;bottom:12%;left:8%;width:30px;height:30px;border-bottom:3px solid #00e5b0;border-left:3px solid #00e5b0;animation:c-glow 2s ease-in-out infinite;"></div>
+      <div style="position:absolute;bottom:12%;right:8%;width:30px;height:30px;border-bottom:3px solid #00e5b0;border-right:3px solid #00e5b0;animation:c-glow 2s ease-in-out infinite;"></div>
+      <div style="position:absolute;top:12%;left:8%;right:8%;height:2px;background:linear-gradient(to right,transparent,rgba(0,229,176,0.8),#00e5b0,rgba(0,229,176,0.8),transparent);animation:scan-move 2.8s ease-in-out infinite;box-shadow:0 0 12px #00e5b0;"></div>
+      <div style="position:absolute;bottom:112px;left:0;right:0;display:flex;justify-content:center;">
+        <span style="background:rgba(7,7,17,0.78);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#00e5b0;padding:7px 16px;border-radius:20px;font-size:13px;border:1px solid rgba(0,229,176,0.3);">文書をフレーム内に合わせてください</span>
+      </div>
+    </div>
+    <!-- Auto mode status bar -->
+    <div id="auto-status-bar" style="display:none;position:absolute;top:0;left:0;right:0;padding:max(52px,env(safe-area-inset-top)) 16px 14px;background:linear-gradient(to bottom,rgba(7,7,17,0.9),transparent);">
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
+        <div id="auto-dot" style="width:8px;height:8px;border-radius:50%;background:#f59e0b;animation:blink 0.8s ease-in-out infinite;flex-shrink:0;"></div>
+        <span id="auto-text" style="font-size:13px;color:#f0f0fa;font-weight:500;">文書を探しています...</span>
+      </div>
+    </div>
+    <!-- Camera loading -->
+    <div id="camera-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:12px;color:#f0f0fa;font-size:15px;">
+      <div class="spinner" style="width:24px;height:24px;border-width:2px;"></div>カメラを起動中...
+    </div>
+  </div>
+  <!-- Controls bar -->
+  <div style="background:#070711;padding:22px 32px 36px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #1e1e35;flex-shrink:0;" class="safe-bottom">
+    <button onclick="APP.closeCamera()" style="width:50px;height:50px;background:#0f0f1e;border:1px solid #1e1e35;border-radius:50%;color:#f0f0fa;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;">✕</button>
+    <!-- Shutter + countdown ring -->
+    <div style="position:relative;width:80px;height:80px;display:flex;align-items:center;justify-content:center;">
+      <canvas id="countdown-ring" width="80" height="80" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+      <button id="shutter-btn" onclick="APP.captureFrame()" disabled
+        style="width:70px;height:70px;background:transparent;border:4px solid #1e1e35;border-radius:50%;cursor:default;display:flex;align-items:center;justify-content:center;transition:border-color 0.3s;position:relative;z-index:1;">
+        <div id="shutter-inner" style="width:56px;height:56px;background:#1e1e35;border-radius:50%;transition:background 0.3s;"></div>
+      </button>
+    </div>
+    <button id="auto-toggle-btn" onclick="APP.toggleAutoCapture()">🤖</button>
+  </div>
+</div>
+
+<!-- PROCESSING -->
+
+<div id="screen-processing" class="screen" style="align-items:center;justify-content:center;">
+  <div id="proc-bg" style="position:absolute;inset:0;background-size:cover;background-position:center;filter:blur(28px) brightness(0.1);transform:scale(1.1);"></div>
+  <div style="position:relative;z-index:1;text-align:center;padding:32px;">
+    <div style="width:88px;height:88px;margin:0 auto 34px;position:relative;">
+      <div style="position:absolute;inset:0;border:3px solid #1e1e35;border-radius:50%;"></div>
+      <div style="position:absolute;inset:0;border:3px solid transparent;border-top-color:#00e5b0;border-radius:50%;animation:spin 0.9s linear infinite;"></div>
+      <div style="position:absolute;inset:10px;border:2px solid transparent;border-top-color:#6366f1;border-radius:50%;animation:spin-rev 1.4s linear infinite;"></div>
+      <div style="position:absolute;inset:20px;background:#0f0f1e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;">🔍</div>
+    </div>
+    <h2 style="font-size:24px;font-weight:700;margin:0 0 26px;letter-spacing:-0.3px;">AI解析中...</h2>
+    <div style="margin-bottom:30px;">
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;"><div style="width:7px;height:7px;border-radius:50%;background:#00e5b0;animation:blink 1.5s ease-in-out infinite 0s;"></div><span style="font-size:14px;color:#6b7280;animation:blink 1.5s ease-in-out infinite 0s;">文書コーナーを検出中...</span></div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;"><div style="width:7px;height:7px;border-radius:50%;background:#00e5b0;animation:blink 1.5s ease-in-out infinite 0.35s;"></div><span style="font-size:14px;color:#6b7280;animation:blink 1.5s ease-in-out infinite 0.35s;">OpenCV.js 射影変換中...</span></div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;"><div style="width:7px;height:7px;border-radius:50%;background:#00e5b0;animation:blink 1.5s ease-in-out infinite 0.7s;"></div><span style="font-size:14px;color:#6b7280;animation:blink 1.5s ease-in-out infinite 0.7s;">画像補正中...</span></div>
+    </div>
+    <div style="width:220px;height:3px;background:#1e1e35;border-radius:2px;overflow:hidden;margin:0 auto;">
+      <div id="proc-bar" style="height:100%;background:linear-gradient(to right,#00e5b0,#6366f1);width:0%;border-radius:2px;transition:width 0.4s ease;"></div>
+    </div>
+    <p style="font-size:12px;color:#6b7280;margin-top:12px;">Claude AI が処理しています</p>
+  </div>
+</div>
+
+<!-- REVIEW -->
+
+<div id="screen-review" class="screen">
+  <div class="nav-header">
+    <button class="nav-btn" onclick="APP.cancelReview()">← 戻る</button>
+    <span class="nav-title" id="review-title">確認・補正</span>
+    <button class="nav-btn-accent" onclick="APP.addAndScan()">+ 追加</button>
+  </div>
+  <div style="padding:12px 14px 0;flex-shrink:0;">
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tab-btn-result"  onclick="APP.switchTab('result')">📐 補正結果</button>
+      <button class="tab-btn"        id="tab-btn-corners" onclick="APP.switchTab('corners')">✋ コーナー調整</button>
+    </div>
+  </div>
+  <div id="tab-result" class="scroll-body" style="padding:12px 14px;">
+    <div class="toggle-row" style="margin-bottom:11px;">
+      <div><div style="font-size:14px;font-weight:600;">白黒モード</div><div style="font-size:12px;color:#6b7280;margin-top:2px;">アダプティブ閾値でテキスト鮮明化</div></div>
+      <button class="toggle-sw" id="bw-toggle" onclick="APP.toggleBW()"><div class="toggle-knob"></div></button>
+    </div>
+    <div id="quality-badge" style="display:none;"></div>
+    <img id="review-img" src="" alt="" style="width:100%;border-radius:14px;border:1px solid #1e1e35;display:block;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+  </div>
+  <div id="tab-corners" class="scroll-body" style="padding:12px 14px;display:none;">
+    <p style="font-size:13px;color:#6b7280;text-align:center;margin-bottom:10px;">● を長押し＆ドラッグでコーナーを調整</p>
+    <div style="position:relative;border-radius:14px;overflow:hidden;border:1px solid #1e1e35;touch-action:none;">
+      <img id="corner-img" src="" alt="" style="width:100%;display:block;pointer-events:none;">
+      <canvas id="corner-canvas" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;"></canvas>
+    </div>
+    <button class="btn btn-indigo" onclick="APP.reapplyCorners()" style="margin-top:12px;">🔲 この位置で射影変換を再実行</button>
+  </div>
+  <div style="padding:12px 14px;border-top:1px solid #1e1e35;background:#0f0f1e;flex-shrink:0;" class="safe-bottom">
+    <button class="btn btn-primary" onclick="APP.finalizeReview()" style="margin-bottom:9px;font-size:16px;padding:16px;">✓ このページを確定</button>
+    <button class="btn btn-secondary" onclick="APP.addAndScan()">📷 追加してもう1枚スキャン</button>
+  </div>
+</div>
+
+<!-- PAGES -->
+
+<div id="screen-pages" class="screen">
+  <div class="nav-header">
+    <button class="nav-btn" onclick="APP.showScreen('home')">🏠</button>
+    <span class="nav-title" id="pages-title">スキャン済み 0枚</span>
+    <button class="nav-btn-accent" onclick="APP.startCamera()">+ 追加</button>
+  </div>
+  <div class="scroll-body" style="padding:14px;">
+    <div id="pages-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+    <div id="pages-empty" style="display:none;flex-direction:column;align-items:center;padding:60px 20px;color:#6b7280;font-size:14px;text-align:center;gap:12px;">
+      <span style="font-size:40px;">📂</span>スキャンしたページがありません
+    </div>
+  </div>
+  <div style="padding:12px 14px;border-top:1px solid #1e1e35;background:#0f0f1e;flex-shrink:0;" class="safe-bottom">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:9px;">
+      <button class="btn btn-secondary btn-sm" onclick="APP.exportAllJPG()">💾 全JPG</button>
+      <button id="pdf-btn" class="btn btn-sm" onclick="APP.exportPDF()" style="background:rgba(99,102,241,0.12);color:#818cf8;border:1px solid rgba(99,102,241,0.3);border-radius:14px;font-weight:600;font-family:inherit;cursor:pointer;">📄 PDF</button>
+      <button class="btn btn-sm" onclick="APP.openOCR()" style="background:rgba(0,229,176,0.08);color:#00e5b0;border:1px solid rgba(0,229,176,0.3);border-radius:14px;font-weight:600;font-family:inherit;cursor:pointer;">📝 OCR</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+      <button class="btn btn-primary" onclick="APP.startCamera()" style="padding:14px;">📷 追加</button>
+      <button class="btn btn-indigo" onclick="APP.saveSession()" style="padding:14px;">🗂 履歴に保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- OCR OVERLAY -->
+
+<div id="ocr-overlay">
+  <div class="nav-header" style="background:#0f0f1e;">
+    <button class="nav-btn" onclick="APP.closeOCR()">✕</button>
+    <span class="nav-title">OCR テキスト認識</span>
+    <button class="nav-btn-accent" onclick="APP.copyOCR()">コピー</button>
+  </div>
+  <div class="scroll-body" style="padding:14px;">
+    <div id="ocr-loading" style="display:none;flex-direction:column;align-items:center;padding:50px;gap:16px;">
+      <div class="spinner" style="width:44px;height:44px;"></div>
+      <p style="color:#6b7280;font-size:14px;">Claude AI でテキストを認識中...</p>
+    </div>
+    <div id="ocr-content">
+      <p id="ocr-text" style="margin:0;font-size:15px;line-height:1.85;color:#d0d0e8;white-space:pre-wrap;background:#0f0f1e;border:1px solid #1e1e35;border-radius:14px;padding:18px;min-height:160px;"></p>
+    </div>
+  </div>
+  <div style="padding:12px 14px;border-top:1px solid #1e1e35;background:#0f0f1e;flex-shrink:0;" class="safe-bottom">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+      <button id="ocr-copy-btn" class="btn btn-secondary" onclick="APP.copyOCR()">📋 コピー</button>
+      <button class="btn btn-sm" onclick="APP.saveTXT()" style="background:rgba(0,229,176,0.08);color:#00e5b0;border:1px solid rgba(0,229,176,0.3);border-radius:14px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;padding:14px;">📄 TXT保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY OVERLAY (Phase 5) -->
+
+<div id="history-overlay">
+  <div class="nav-header">
+    <button class="nav-btn" onclick="APP.closeHistory()">✕ 閉じる</button>
+    <span class="nav-title">スキャン履歴</span>
+    <button class="nav-btn" onclick="APP.clearAllHistory()" style="color:#ef4444;font-size:13px;">全削除</button>
+  </div>
+  <div class="scroll-body" style="padding:14px;">
+    <div id="history-list"></div>
+    <div id="history-empty" style="display:none;flex-direction:column;align-items:center;padding:60px 20px;color:#6b7280;font-size:14px;text-align:center;gap:12px;">
+      <span style="font-size:40px;">🗂</span>
+      <p>保存された履歴がありません<br><span style="font-size:12px;margin-top:4px;display:block;">スキャン後「履歴に保存」で保存できます</span></p>
+    </div>
+  </div>
+</div>
+
+<!-- SESSION DETAIL OVERLAY (Phase 5) -->
+
+<div id="session-overlay">
+  <div class="nav-header">
+    <button class="nav-btn" onclick="APP.closeSession()">← 戻る</button>
+    <span class="nav-title" id="session-title">セッション</span>
+    <button class="nav-btn-accent" onclick="APP.loadSession()">読み込む</button>
+  </div>
+  <div class="scroll-body" style="padding:14px;">
+    <div id="session-info" style="padding:13px 15px;background:#0f0f1e;border-radius:12px;border:1px solid #1e1e35;margin-bottom:14px;font-size:14px;color:#6b7280;"></div>
+    <div id="session-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+  </div>
+  <div style="padding:12px 14px;border-top:1px solid #1e1e35;background:#0f0f1e;flex-shrink:0;" class="safe-bottom">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+      <button class="btn btn-primary" onclick="APP.loadSession()" style="padding:14px;">📂 読み込む</button>
+      <button class="btn btn-danger" onclick="APP.deleteCurrentSession()" style="padding:14px;">🗑 削除</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="proc-canvas" style="display:none;"></canvas>
+<canvas id="auto-work-canvas" style="display:none;"></canvas>
+
+<script>
+const APP = (() => {
+  // ── STATE ──────────────────────────────────────
+  const S = {
+    pages: [], currentOriginal: null, currentProcessed: null,
+    currentCorners: null, currentQuality: null,
+    cvReady: false, cameraStream: null, isBW: false, ocrText: '',
+    cornerPoints: [], cornerDrag: { active: false, idx: -1 },
+    // Phase 4
+    autoCapture: false, autoRAF: null,
+    stableFrames: 0, STABLE: 40,
+    lastQuad: null, cameraReady: false,
+    // Phase 5
+    db: null, currentSession: null,
+  };
+
+  // ── INDEXEDDB (Phase 5) ─────────────────────────
+  function initDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('DocScanDB', 1);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('sessions'))
+          db.createObjectStore('sessions', { keyPath: 'id', autoIncrement: true });
+      };
+      req.onsuccess = e => { S.db = e.target.result; resolve(); };
+      req.onerror   = () => reject(req.error);
+    });
+  }
+  const dbTx = (mode, fn) => new Promise((res, rej) => {
+    const tx  = S.db.transaction('sessions', mode);
+    const req = fn(tx.objectStore('sessions'));
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+  const dbAdd    = r  => dbTx('readwrite', s => s.add(r));
+  const dbGetAll = () => dbTx('readonly',  s => s.getAll());
+  const dbDel    = id => dbTx('readwrite', s => s.delete(id));
+  const dbClear  = () => dbTx('readwrite', s => s.clear());
+
+  function makeThumbnail(dataUrl, maxW) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        const r = Math.min(maxW / img.width, 1);
+        const c = document.createElement('canvas');
+        c.width  = Math.round(img.width  * r);
+        c.height = Math.round(img.height * r);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
+  async function saveSession() {
+    if (!S.pages.length) { alert('保存するページがありません'); return; }
+    if (!S.db) { alert('IndexedDB が利用できません'); return; }
+    const thumb = await makeThumbnail(S.pages[0].processed, 160);
+    const now   = new Date();
+    const pad   = n => String(n).padStart(2,'0');
+    const title = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    try {
+      await dbAdd({ date: now.toISOString(), title, thumbnail: thumb, pageCount: S.pages.length, pages: S.pages.map(p => ({ processed: p.processed, original: p.original })) });
+      showToast('✓ 履歴に保存しました');
+    } catch(e) { alert('保存エラー: ' + e.message); }
+  }
+
+  async function openHistory() {
+    document.getElementById('history-overlay').classList.add('active');
+    await renderHistory();
+  }
+  function closeHistory() { document.getElementById('history-overlay').classList.remove('active'); }
+
+  async function renderHistory() {
+    const list  = document.getElementById('history-list');
+    const empty = document.getElementById('history-empty');
+    list.innerHTML = '';
+    if (!S.db) { empty.style.display = 'flex'; return; }
+    let sessions = [];
+    try { sessions = await dbGetAll(); } catch(e) {}
+    sessions.sort((a,b) => new Date(b.date) - new Date(a.date));
+    if (!sessions.length) { empty.style.display = 'flex'; return; }
+    empty.style.display = 'none';
+    sessions.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'hist-card';
+      card.innerHTML =
+        `<img class="hist-thumb" src="${s.thumbnail}" alt="">` +
+        `<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;margin-bottom:4px;">${s.title}</div><div style="font-size:12px;color:#6b7280;">${s.pageCount}ページ</div></div>` +
+        `<button class="hist-del" onclick="event.stopPropagation();APP.deleteSession(${s.id})">🗑</button>`;
+      card.addEventListener('click', () => openSession(s));
+      list.appendChild(card);
+    });
+  }
+
+  async function deleteSession(id) {
+    if (!confirm('このセッションを削除しますか？')) return;
+    try { await dbDel(id); await renderHistory(); } catch(e) { alert('削除エラー: ' + e.message); }
+  }
+
+  async function clearAllHistory() {
+    if (!confirm('すべての履歴を削除しますか？')) return;
+    try { await dbClear(); await renderHistory(); } catch(e) { alert('削除エラー: ' + e.message); }
+  }
+
+  function openSession(session) {
+    S.currentSession = session;
+    document.getElementById('session-title').textContent = session.title;
+    document.getElementById('session-info').innerHTML =
+      `<span style="color:#f0f0fa;font-weight:600;">${session.pageCount}ページ</span><span style="margin-left:12px;color:#6b7280;">保存日: ${session.title}</span>`;
+    const grid = document.getElementById('session-grid');
+    grid.innerHTML = '';
+    session.pages.forEach((p,i) => {
+      const d = document.createElement('div'); d.className = 'thumb';
+      d.innerHTML = `<img src="${p.processed}" alt=""><span class="thumb-num">${i+1}ページ</span>`;
+      grid.appendChild(d);
+    });
+    document.getElementById('session-overlay').classList.add('active');
+  }
+
+  function closeSession() { document.getElementById('session-overlay').classList.remove('active'); S.currentSession = null; }
+
+  function loadSession() {
+    if (!S.currentSession) return;
+    if (S.pages.length > 0 && !confirm('現在のスキャンデータを破棄して読み込みますか？')) return;
+    S.pages = S.currentSession.pages.map(p => ({ processed: p.processed, original: p.original }));
+    updateHomePagesBtn(); closeSession(); closeHistory();
+    renderPages(); showScreen('pages'); showToast('✓ セッションを読み込みました');
+  }
+
+  function deleteCurrentSession() {
+    if (!S.currentSession) return;
+    deleteSession(S.currentSession.id).then(() => closeSession());
+  }
+
+  // ── OPENCV ─────────────────────────────────────
+  function onCVReady() {
+    S.cvReady = true;
+    document.getElementById('cv-dot').style.cssText  = 'width:7px;height:7px;border-radius:50%;background:#00e5b0;flex-shrink:0;';
+    document.getElementById('cv-text').textContent   = 'OpenCV.js 準備完了 ✓';
+    document.getElementById('cv-text').style.color   = '#00e5b0';
+  }
+  let _cvPoll = setInterval(() => { if (window.cv && window.cv.imread) { clearInterval(_cvPoll); onCVReady(); } }, 400);
+
+  // ── SCREENS ────────────────────────────────────
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + id).classList.add('active');
+  }
+  function showError(msg) {
+    const el = document.getElementById('home-error');
+    el.textContent = msg; el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 7000);
+  }
+  function showToast(msg) {
+    const t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(0,229,176,0.15);border:1px solid rgba(0,229,176,0.4);color:#00e5b0;padding:10px 20px;border-radius:20px;font-size:14px;font-weight:600;z-index:999;animation:fade-in 0.2s ease;white-space:nowrap;pointer-events:none;';
+    document.body.appendChild(t); setTimeout(() => t.remove(), 2500);
+  }
+  function updateHomePagesBtn() {
+    const n = S.pages.length;
+    document.getElementById('home-pages-wrapper').style.display = n > 0 ? 'block' : 'none';
+    document.getElementById('home-pages-count').textContent = n;
+  }
+  function goToPages() { renderPages(); showScreen('pages'); }
+
+  // ── CAMERA ─────────────────────────────────────
+  async function startCamera() {
+    showScreen('camera');
+    const video   = document.getElementById('camera-video');
+    const loading = document.getElementById('camera-loading');
+    const overlay = document.getElementById('camera-overlay');
+    const shutBtn = document.getElementById('shutter-btn');
+    const shutIn  = document.getElementById('shutter-inner');
+
+    loading.style.display = 'flex'; overlay.style.display = 'none';
+    shutBtn.disabled = true; shutIn.style.background = '#1e1e35';
+    shutBtn.style.borderColor = '#1e1e35'; shutBtn.style.cursor = 'default';
+    S.cameraReady = false;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      S.cameraStream = stream;
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        loading.style.display = 'none';
+        overlay.style.display = S.autoCapture ? 'none' : 'block';
+        shutBtn.disabled = false;
+        shutIn.style.background   = '#00e5b0';
+        shutBtn.style.borderColor = '#00e5b0';
+        shutBtn.style.cursor      = 'pointer';
+        S.cameraReady = true;
+        if (S.autoCapture) {
+          document.getElementById('auto-status-bar').style.display = 'block';
+          document.getElementById('detect-canvas').style.opacity   = '1';
+          startAutoLoop();
+        }
+      };
+    } catch(e) {
+      stopCamera(); showScreen('home');
+      showError('カメラへのアクセスに失敗しました。ブラウザの設定を確認してください。');
+    }
+  }
+
+  function stopCamera() {
+    stopAutoLoop(); S.cameraReady = false;
+    if (S.cameraStream) { S.cameraStream.getTracks().forEach(t => t.stop()); S.cameraStream = null; }
+  }
+  function closeCamera() { stopCamera(); showScreen('home'); }
+
+  function captureFrame() {
+    const video = document.getElementById('camera-video');
+    if (!video.videoWidth) return;
+    const c = document.getElementById('proc-canvas');
+    c.width = video.videoWidth; c.height = video.videoHeight;
+    c.getContext('2d').drawImage(video, 0, 0);
+    const dataUrl = c.toDataURL('image/jpeg', 0.95);
+    const flash   = document.getElementById('detect-flash');
+    flash.style.animation = 'none'; flash.offsetHeight;
+    flash.style.animation = 'flash-wh 0.35s ease forwards';
+    stopCamera();
+    processImage(dataUrl);
+  }
+
+  function handleFile(e) {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => processImage(ev.target.result);
+    r.readAsDataURL(f); e.target.value = '';
+  }
+
+  // ── PHASE 4: AUTO CAPTURE ───────────────────────
+  function toggleAutoCapture() {
+    S.autoCapture = !S.autoCapture;
+    document.getElementById('auto-toggle-btn').classList.toggle('active', S.autoCapture);
+    const overlay   = document.getElementById('camera-overlay');
+    const statusBar = document.getElementById('auto-status-bar');
+    const detectC   = document.getElementById('detect-canvas');
+    if (S.autoCapture) {
+      overlay.style.display  = 'none';
+      if (S.cameraReady) { statusBar.style.display = 'block'; detectC.style.opacity = '1'; startAutoLoop(); }
+    } else {
+      overlay.style.display  = 'block';
+      statusBar.style.display = 'none'; detectC.style.opacity = '0';
+      stopAutoLoop(); S.stableFrames = 0; S.lastQuad = null;
+      drawCountdownRing(0); clearDetectCanvas();
+    }
+  }
+
+  function startAutoLoop() {
+    if (S.autoRAF) return;
+    const loop = () => { processAutoFrame(); S.autoRAF = requestAnimationFrame(loop); };
+    S.autoRAF = requestAnimationFrame(loop);
+  }
+  function stopAutoLoop() {
+    if (S.autoRAF) { cancelAnimationFrame(S.autoRAF); S.autoRAF = null; }
+  }
+
+  function processAutoFrame() {
+    const video = document.getElementById('camera-video');
+    if (!video.videoWidth || !S.cvReady) return;
+
+    // Downscale to 320px for speed
+    const SCALE = 320 / video.videoWidth;
+    const sw = 320, sh = Math.round(video.videoHeight * SCALE);
+    const work = document.getElementById('auto-work-canvas');
+    work.width = sw; work.height = sh;
+    work.getContext('2d').drawImage(video, 0, 0, sw, sh);
+
+    const quad = detectDocQuad(work, sw, sh);
+    const dot  = document.getElementById('auto-dot');
+    const txt  = document.getElementById('auto-text');
+
+    if (quad) {
+      drawDetectQuad(quad, 1 / SCALE, video.videoWidth, video.videoHeight);
+      const stable = isStable(quad, S.lastQuad);
+      S.lastQuad = quad;
+      S.stableFrames = stable ? Math.min(S.stableFrames + 1, S.STABLE) : Math.max(0, S.stableFrames - 2);
+      const ratio = S.stableFrames / S.STABLE;
+      drawCountdownRing(ratio);
+      dot.style.background = '#00e5b0'; dot.style.animation = '';
+      txt.textContent = ratio > 0.5 ? '文書を検出 — 静止してください...' : '文書を検出しました';
+      if (S.stableFrames >= S.STABLE) { S.stableFrames = 0; S.lastQuad = null; captureFrame(); }
+    } else {
+      S.stableFrames = Math.max(0, S.stableFrames - 1);
+      drawCountdownRing(S.stableFrames / S.STABLE);
+      clearDetectCanvas();
+      dot.style.background = '#f59e0b'; dot.style.animation = 'blink 0.8s ease-in-out infinite';
+      txt.textContent = '文書を探しています...';
+    }
+  }
+
+  function detectDocQuad(canvas, w, h) {
+    if (!window.cv) return null;
+    const cv = window.cv;
+    try {
+      const src = cv.imread(canvas);
+      const gray = new cv.Mat(), blur = new cv.Mat(), edges = new cv.Mat();
+      const contours = new cv.MatVector(), hier = new cv.Mat();
+      const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+      cv.Canny(blur, edges, 50, 150);
+      cv.dilate(edges, edges, kernel);
+      cv.findContours(edges, contours, hier, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+      let bestQ = null, bestA = 0;
+      for (let i = 0; i < contours.size(); i++) {
+        const cnt = contours.get(i);
+        const peri = cv.arcLength(cnt, true);
+        const approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+        if (approx.rows === 4 && cv.isContourConvex(approx)) {
+          const area = Math.abs(cv.contourArea(approx));
+          if (area > w * h * 0.08 && area > bestA) {
+            bestA = area;
+            bestQ = [
+              { x: approx.data32S[0], y: approx.data32S[1] },
+              { x: approx.data32S[2], y: approx.data32S[3] },
+              { x: approx.data32S[4], y: approx.data32S[5] },
+              { x: approx.data32S[6], y: approx.data32S[7] },
+            ];
+          }
+        }
+        approx.delete(); cnt.delete();
+      }
+      src.delete(); gray.delete(); blur.delete(); edges.delete();
+      contours.delete(); hier.delete(); kernel.delete();
+      return bestQ ? orderPts(bestQ) : null;
+    } catch(e) { return null; }
+  }
+
+  function orderPts(pts) {
+    const cx = pts.reduce((s,p)=>s+p.x,0)/4, cy = pts.reduce((s,p)=>s+p.y,0)/4;
+    return [
+      pts.find(p=>p.x<cx&&p.y<cy)||pts[0],
+      pts.find(p=>p.x>=cx&&p.y<cy)||pts[1],
+      pts.find(p=>p.x>=cx&&p.y>=cy)||pts[2],
+      pts.find(p=>p.x<cx&&p.y>=cy)||pts[3],
+    ].filter(Boolean);
+  }
+
+  function isStable(q1, q2) {
+    if (!q2 || q1.length !== q2.length) return false;
+    return q1.every((p,i) => Math.abs(p.x-q2[i].x)<12 && Math.abs(p.y-q2[i].y)<12);
+  }
+
+  function drawDetectQuad(quad, invScale, vw, vh) {
+    const dc = document.getElementById('detect-canvas');
+    dc.width = vw; dc.height = vh;
+    const ctx = dc.getContext('2d');
+    ctx.clearRect(0, 0, vw, vh);
+    if (!quad || quad.length < 4) return;
+    const pts = quad.map(p => ({ x: p.x * invScale, y: p.y * invScale }));
+    const ratio = S.stableFrames / S.STABLE;
+    const gv = Math.round(229 * Math.min(ratio + 0.4, 1));
+    const bv = Math.round(176 * Math.min(ratio + 0.4, 1));
+    const col = `rgba(0,${gv},${bv},0.88)`;
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(vw / 200, 2.5);
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    pts.forEach((p,i) => { if (i>0) ctx.lineTo(p.x, p.y); });
+    ctx.closePath(); ctx.stroke();
+    pts.forEach(p => {
+      ctx.fillStyle = col; ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(vw/55, 9), 0, Math.PI*2); ctx.fill();
+    });
+  }
+
+  function clearDetectCanvas() {
+    const dc = document.getElementById('detect-canvas');
+    dc.getContext('2d').clearRect(0, 0, dc.width, dc.height);
+  }
+
+  function drawCountdownRing(ratio) {
+    const c = document.getElementById('countdown-ring');
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, 80, 80);
+    if (ratio <= 0) return;
+    const start = -Math.PI / 2;
+    const r = Math.round(239 * (1 - ratio)), g = Math.round(229 * ratio), b = Math.round(176 * ratio);
+    ctx.strokeStyle = `rgba(${r},${g},${b},0.92)`;
+    ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(40, 40, 36, start, start + Math.PI * 2 * ratio); ctx.stroke();
+  }
+
+  // ── PIPELINE ────────────────────────────────────
+  async function processImage(dataUrl) {
+    S.currentOriginal = dataUrl; S.isBW = false;
+    document.getElementById('proc-bg').style.backgroundImage = `url(${dataUrl})`;
+    setBar(0); showScreen('processing');
+    try {
+      setBar(15);
+      const ai = await callClaude(dataUrl);
+      setBar(55);
+      const img = await loadImg(dataUrl);
+      const W = img.width, H = img.height;
+      let corners = null;
+      if (ai.hasDocument !== false && ai.corners) {
+        const c = ai.corners;
+        corners = {
+          topLeft:     { x: c.topLeft.x * W,     y: c.topLeft.y * H },
+          topRight:    { x: c.topRight.x * W,    y: c.topRight.y * H },
+          bottomRight: { x: c.bottomRight.x * W, y: c.bottomRight.y * H },
+          bottomLeft:  { x: c.bottomLeft.x * W,  y: c.bottomLeft.y * H },
+        };
+      }
+      S.currentCorners = corners; S.currentQuality = ai.quality || 'unknown';
+      setBar(75);
+      S.currentProcessed = corners
+        ? (S.cvReady ? await cvWarp(img, corners) : await simpleCrop(img, corners))
+        : dataUrl;
+      setBar(100);
+      setTimeout(() => showReview(), 300);
+    } catch(e) {
+      S.currentProcessed = dataUrl; S.currentQuality = 'poor'; showReview();
+    }
+  }
+
+  function setBar(v) { document.getElementById('proc-bar').style.width = v + '%'; }
+
+  async function callClaude(dataUrl) {
+    const base64 = dataUrl.split(',')[1];
+    const prompt = 'Analyze this document image. Return ONLY valid JSON:\n' +
+      '{"corners":{"topLeft":{"x":0.05,"y":0.05},"topRight":{"x":0.95,"y":0.05},"bottomRight":{"x":0.95,"y":0.95},"bottomLeft":{"x":0.05,"y":0.95}},"quality":"good","hasDocument":true}\n' +
+      'corners: fractions 0-1; quality: good/fair/poor; hasDocument: true if paper visible.';
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+          { type: 'text', text: prompt }
+        ]}]
+      })
+    });
+    const data = await res.json();
+    const raw = (data.content?.find(c=>c.type==='text')?.text||'{}').replace(/```json\n?|\n?```/g,'').trim();
+    try { return JSON.parse(raw); } catch { return { hasDocument: false, quality: 'unknown', corners: null }; }
+  }
+
+  function cvWarp(img, corners) {
+    return new Promise((resolve, reject) => {
+      try {
+        const cv = window.cv;
+        const sc = document.createElement('canvas'); sc.width = img.width; sc.height = img.height;
+        sc.getContext('2d').drawImage(img, 0, 0);
+        const { topLeft: tl, topRight: tr, bottomRight: br, bottomLeft: bl } = corners;
+        const outW = Math.max(Math.round(Math.max(Math.hypot(tr.x-tl.x,tr.y-tl.y),Math.hypot(br.x-bl.x,br.y-bl.y))),10);
+        const outH = Math.max(Math.round(Math.max(Math.hypot(bl.x-tl.x,bl.y-tl.y),Math.hypot(br.x-tr.x,br.y-tr.y))),10);
+        const srcP = cv.matFromArray(4,1,cv.CV_32FC2,[tl.x,tl.y,tr.x,tr.y,br.x,br.y,bl.x,bl.y]);
+        const dstP = cv.matFromArray(4,1,cv.CV_32FC2,[0,0,outW,0,outW,outH,0,outH]);
+        const M = cv.getPerspectiveTransform(srcP,dstP);
+        const src = cv.imread(sc); const dst = new cv.Mat();
+        cv.warpPerspective(src,dst,M,new cv.Size(outW,outH),cv.INTER_LINEAR,cv.BORDER_CONSTANT,new cv.Scalar(255,255,255,255));
+        const oc = document.createElement('canvas'); oc.width=outW; oc.height=outH;
+        cv.imshow(oc,dst);
+        src.delete();dst.delete();M.delete();srcP.delete();dstP.delete();
+        resolve(oc.toDataURL('image/jpeg',0.95));
+      } catch(e) { reject(e); }
+    });
+  }
+
+  function simpleCrop(img, corners) {
+    return new Promise(resolve => {
+      const xs=[corners.topLeft.x,corners.topRight.x,corners.bottomRight.x,corners.bottomLeft.x];
+      const ys=[corners.topLeft.y,corners.topRight.y,corners.bottomRight.y,corners.bottomLeft.y];
+      const x1=Math.max(0,Math.min(...xs)),y1=Math.max(0,Math.min(...ys));
+      const cw=Math.max(Math.max(...xs)-x1,1),ch=Math.max(Math.max(...ys)-y1,1);
+      const c=document.createElement('canvas');c.width=cw;c.height=ch;
+      const ctx=c.getContext('2d');ctx.filter='contrast(1.1) brightness(1.05)';
+      ctx.drawImage(img,x1,y1,cw,ch,0,0,cw,ch);
+      resolve(c.toDataURL('image/jpeg',0.95));
+    });
+  }
+
+  async function applyBW(dataUrl) {
+    const img = await loadImg(dataUrl);
+    if (S.cvReady) {
+      try {
+        const cv=window.cv;
+        const sc=document.createElement('canvas');sc.width=img.width;sc.height=img.height;
+        sc.getContext('2d').drawImage(img,0,0);
+        const src=cv.imread(sc),gray=new cv.Mat(),thresh=new cv.Mat();
+        cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
+        cv.adaptiveThreshold(gray,thresh,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY,15,8);
+        const oc=document.createElement('canvas');oc.width=img.width;oc.height=img.height;
+        cv.imshow(oc,thresh);src.delete();gray.delete();thresh.delete();
+        return oc.toDataURL('image/jpeg',0.95);
+      } catch(e) {}
+    }
+    const c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+    const ctx=c.getContext('2d');ctx.filter='grayscale(1) contrast(1.45) brightness(1.1)';
+    ctx.drawImage(img,0,0);return c.toDataURL('image/jpeg',0.95);
+  }
+
+  // ── REVIEW ─────────────────────────────────────
+  function showReview() {
+    showScreen('review'); switchTab('result');
+    document.getElementById('review-img').src = S.currentProcessed;
+    document.getElementById('review-title').textContent = `確認・補正 (${S.pages.length+1}枚目)`;
+    S.isBW = false; document.getElementById('bw-toggle').classList.remove('on');
+    const badge = document.getElementById('quality-badge');
+    const qMap = {
+      good:    ['q-good','✓ 品質: 良好'],
+      fair:    ['q-fair','⚠ 品質: 普通'],
+      poor:    ['q-poor','✗ 品質: 低品質'],
+      unknown: ['q-poor','文書が検出されませんでした'],
+    };
+    const q = S.currentQuality;
+    if (q && qMap[q]) { badge.style.display='block'; badge.className='quality-badge '+qMap[q][0]; badge.textContent=qMap[q][1]; }
+    else badge.style.display='none';
+    initCornerCanvas();
+  }
+
+  function switchTab(tab) {
+    document.getElementById('tab-result').style.display  = tab==='result'  ? 'block' : 'none';
+    document.getElementById('tab-corners').style.display = tab==='corners' ? 'block' : 'none';
+    document.getElementById('tab-btn-result').classList.toggle('active',  tab==='result');
+    document.getElementById('tab-btn-corners').classList.toggle('active', tab==='corners');
+  }
+
+  async function toggleBW() {
+    const tog = document.getElementById('bw-toggle');
+    S.isBW = !S.isBW; tog.classList.toggle('on', S.isBW);
+    const img = document.getElementById('review-img');
+    img.style.opacity = '0.4';
+    img.src = S.isBW ? await applyBW(S.currentProcessed) : S.currentProcessed;
+    img.style.opacity = '1';
+  }
+
+  function cancelReview() { S.currentOriginal=null;S.currentProcessed=null;S.currentCorners=null; showScreen('home');updateHomePagesBtn(); }
+
+  function finalizeReview() {
+    if (S.currentProcessed) S.pages.push({ processed: S.currentProcessed, original: S.currentOriginal });
+    S.currentOriginal=null;S.currentProcessed=null;S.currentCorners=null;
+    updateHomePagesBtn();renderPages();showScreen('pages');
+  }
+
+  function addAndScan() {
+    if (S.currentProcessed) S.pages.push({ processed: S.currentProcessed, original: S.currentOriginal });
+    S.currentOriginal=null;S.currentProcessed=null;S.currentCorners=null;
+    updateHomePagesBtn();startCamera();
+  }
+
+  // ── CORNER CANVAS ────────────────────────────────
+  function initCornerCanvas() {
+    const cImg=document.getElementById('corner-img'), canvas=document.getElementById('corner-canvas');
+    cImg.src = S.currentOriginal;
+    const setup = () => {
+      canvas.width=cImg.naturalWidth;canvas.height=cImg.naturalHeight;
+      const W=canvas.width,H=canvas.height;
+      if (S.currentCorners) {
+        const c=S.currentCorners;S.cornerPoints=[c.topLeft,c.topRight,c.bottomRight,c.bottomLeft];
+      } else {
+        const m=0.08;S.cornerPoints=[{x:W*m,y:H*m},{x:W*(1-m),y:H*m},{x:W*(1-m),y:H*(1-m)},{x:W*m,y:H*(1-m)}];
+      }
+      drawCC();
+    };
+    if (cImg.complete&&cImg.naturalWidth>0) setup(); else cImg.onload=setup;
+  }
+
+  function drawCC() {
+    const canvas=document.getElementById('corner-canvas'),ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const pts=S.cornerPoints;if(!pts.length)return;
+    const lw=Math.max(canvas.width/400,1.5),R=Math.max(canvas.width/22,16);
+    ctx.strokeStyle='rgba(0,229,176,0.65)';ctx.lineWidth=lw*2;
+    ctx.setLineDash([canvas.width/25,canvas.width/50]);
+    ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);
+    pts.forEach((p,i)=>{if(i>0)ctx.lineTo(p.x,p.y);});ctx.closePath();ctx.stroke();ctx.setLineDash([]);
+    const cols=['#00e5b0','#6366f1','#f59e0b','#ef4444'],lbls=['TL','TR','BR','BL'];
+    pts.forEach((p,i)=>{
+      ctx.strokeStyle=cols[i];ctx.lineWidth=lw*2;ctx.beginPath();ctx.arc(p.x,p.y,R,0,Math.PI*2);ctx.stroke();
+      ctx.fillStyle=cols[i]+'33';ctx.beginPath();ctx.arc(p.x,p.y,R*0.65,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#fff';ctx.font=`bold ${Math.round(R*0.65)}px -apple-system,sans-serif`;
+      ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(lbls[i],p.x,p.y);
+    });
+  }
+
+  function cvPos(canvas,cx,cy){const r=canvas.getBoundingClientRect();return{x:(cx-r.left)*(canvas.width/r.width),y:(cy-r.top)*(canvas.height/r.height)};}
+  function nearC(pos){const canvas=document.getElementById('corner-canvas'),R=Math.max(canvas.width/20,18)*2;let b=-1,bD=Infinity;S.cornerPoints.forEach((p,i)=>{const d=Math.hypot(pos.x-p.x,pos.y-p.y);if(d<R&&d<bD){b=i;bD=d;}});return b;}
+  function clp(pos,c){return{x:Math.max(0,Math.min(c.width,pos.x)),y:Math.max(0,Math.min(c.height,pos.y))};}
+
+  const CC=document.getElementById('corner-canvas');
+  CC.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0],idx=nearC(cvPos(CC,t.clientX,t.clientY));if(idx>=0)S.cornerDrag={active:true,idx};},{passive:false});
+  CC.addEventListener('touchmove',e=>{e.preventDefault();if(!S.cornerDrag.active)return;const t=e.touches[0];S.cornerPoints[S.cornerDrag.idx]=clp(cvPos(CC,t.clientX,t.clientY),CC);drawCC();},{passive:false});
+  CC.addEventListener('touchend',e=>{e.preventDefault();S.cornerDrag={active:false,idx:-1};},{passive:false});
+  CC.addEventListener('mousedown',e=>{const idx=nearC(cvPos(CC,e.clientX,e.clientY));if(idx>=0)S.cornerDrag={active:true,idx};});
+  CC.addEventListener('mousemove',e=>{if(!S.cornerDrag.active)return;S.cornerPoints[S.cornerDrag.idx]=clp(cvPos(CC,e.clientX,e.clientY),CC);drawCC();});
+  CC.addEventListener('mouseup',()=>{S.cornerDrag={active:false,idx:-1};});
+
+  async function reapplyCorners() {
+    const pts=S.cornerPoints;if(!pts||pts.length<4)return;
+    S.currentCorners={topLeft:pts[0],topRight:pts[1],bottomRight:pts[2],bottomLeft:pts[3]};
+    showScreen('processing');document.getElementById('proc-bg').style.backgroundImage=`url(${S.currentOriginal})`;setBar(20);
+    try {
+      const img=await loadImg(S.currentOriginal);setBar(60);
+      S.currentProcessed=S.cvReady?await cvWarp(img,S.currentCorners):await simpleCrop(img,S.currentCorners);
+      setBar(100);setTimeout(()=>{showReview();switchTab('result');},250);
+    } catch(e){showReview();switchTab('result');}
+  }
+
+  // ── PAGES ──────────────────────────────────────
+  function renderPages() {
+    const grid=document.getElementById('pages-grid'),empty=document.getElementById('pages-empty'),n=S.pages.length;
+    document.getElementById('pages-title').textContent=`スキャン済み ${n}枚`;
+    if(!n){grid.style.display='none';empty.style.display='flex';return;}
+    grid.style.display='grid';empty.style.display='none';grid.innerHTML='';
+    S.pages.forEach((p,i)=>{
+      const d=document.createElement('div');d.className='thumb';
+      d.innerHTML=`<img src="${p.processed}" alt=""><span class="thumb-num">${i+1}ページ</span><button class="thumb-del" onclick="APP.deletePage(${i})">✕</button>`;
+      grid.appendChild(d);
+    });
+  }
+
+  function deletePage(idx){S.pages.splice(idx,1);updateHomePagesBtn();renderPages();}
+
+  function exportAllJPG(){
+    if(!S.pages.length)return;
+    S.pages.forEach((p,i)=>setTimeout(()=>{const a=document.createElement('a');a.href=p.processed;a.download=`docscan_p${i+1}_${Date.now()}.jpg`;a.click();},i*350));
+  }
+
+  async function exportPDF(){
+    if(!S.pages.length)return;
+    if(!window.jspdf){alert('jsPDF が読み込まれていません');return;}
+    const btn=document.getElementById('pdf-btn'),orig=btn.textContent;
+    btn.textContent='⏳...';btn.disabled=true;
+    try {
+      const {jsPDF}=window.jspdf;
+      const fi=await loadImg(S.pages[0].processed),land=fi.width>fi.height;
+      const pdf=new jsPDF({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'});
+      const A4W=land?297:210,A4H=land?210:297,mg=8,maxW=A4W-mg*2,maxH=A4H-mg*2;
+      for(let i=0;i<S.pages.length;i++){
+        if(i>0)pdf.addPage();
+        const img=await loadImg(S.pages[i].processed);
+        let dW=maxW,dH=(img.height/img.width)*dW;if(dH>maxH){dH=maxH;dW=(img.width/img.height)*dH;}
+        pdf.addImage(S.pages[i].processed,'JPEG',(A4W-dW)/2,(A4H-dH)/2,dW,dH,'','FAST');
+      }
+      pdf.save(`docscan_${S.pages.length}p_${Date.now()}.pdf`);
+    } catch(e){alert('PDFエラー: '+e.message);}
+    finally{btn.textContent=orig;btn.disabled=false;}
+  }
+
+  // ── OCR ────────────────────────────────────────
+  function openOCR(){
+    if(!S.pages.length)return;
+    const o=document.getElementById('ocr-overlay'),l=document.getElementById('ocr-loading'),c=document.getElementById('ocr-content'),t=document.getElementById('ocr-text');
+    o.classList.add('active');l.style.display='flex';c.style.display='none';t.textContent='';
+    runOCR().then(text=>{S.ocrText=text;l.style.display='none';c.style.display='block';t.textContent=text;})
+      .catch(e=>{l.style.display='none';c.style.display='block';t.textContent='OCRエラー: '+e.message;});
+  }
+
+  async function runOCR(){
+    const content=[],pages=S.pages.slice(0,5);
+    for(const p of pages)content.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:p.processed.split(',')[1]}});
+    const extra=pages.length>1?`これは${pages.length}ページのドキュメントです。各ページのテキストを「--- ページN ---」で区切って抽出してください。`:'';
+    content.push({type:'text',text:extra+'この文書画像に含まれるすべてのテキストを正確に抽出してください。レイアウトと改行を保持し、テキストのみ返してください。'});
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4096,messages:[{role:'user',content}]})});
+    const data=await res.json();
+    return data.content?.find(c=>c.type==='text')?.text||'テキストを認識できませんでした。';
+  }
+
+  function closeOCR(){document.getElementById('ocr-overlay').classList.remove('active');}
+
+  function copyOCR(){
+    const text=document.getElementById('ocr-text').textContent;if(!text)return;
+    navigator.clipboard?.writeText(text).then(()=>{
+      const btn=document.getElementById('ocr-copy-btn');
+      btn.textContent='✓ コピーしました！';btn.style.color='#00e5b0';btn.style.borderColor='rgba(0,229,176,0.4)';
+      setTimeout(()=>{btn.textContent='📋 コピー';btn.style.color='';btn.style.borderColor='';},2200);
+    });
+  }
+
+  function saveTXT(){
+    const text=document.getElementById('ocr-text').textContent;if(!text)return;
+    const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`docscan_ocr_${Date.now()}.txt`;a.click();URL.revokeObjectURL(url);
+  }
+
+  // ── UTILS ──────────────────────────────────────
+  function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
+
+  // ── INIT ───────────────────────────────────────
+  initDB().catch(e => console.warn('IndexedDB:', e));
+
+  return {
+    onCVReady, showScreen, goToPages, updateHomePagesBtn,
+    startCamera, closeCamera, captureFrame, handleFile,
+    toggleAutoCapture,
+    toggleBW, switchTab, cancelReview, finalizeReview, addAndScan, reapplyCorners,
+    deletePage, renderPages,
+    exportAllJPG, exportPDF,
+    openOCR, closeOCR, copyOCR, saveTXT,
+    saveSession,
+    openHistory, closeHistory, deleteSession, clearAllHistory,
+    closeSession, loadSession, deleteCurrentSession,
+  };
+})();
+</script>
+
+</body>
+</html>
