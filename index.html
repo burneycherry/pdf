@@ -9,6 +9,7 @@
   <meta name="theme-color" content="#070711">
   <title>DocScan AI</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
     var Module = { onRuntimeInitialized: function() { APP && APP.onCVReady(); } };
   </script>
@@ -131,7 +132,8 @@
   <div class="feat-card" style="animation:fade-up 0.5s ease 0.18s both;"><span style="font-size:20px;">🔲</span><div><div style="font-size:14px;font-weight:600;">OpenCV.js 射影変換</div><div style="font-size:12px;color:#6b7280;margin-top:2px;">正確な台形・パース歪み補正</div></div></div>
   <div class="feat-card" style="animation:fade-up 0.5s ease 0.24s both;"><span style="font-size:20px;">🤖</span><div><div style="font-size:14px;font-weight:600;">自動撮影 <span style="color:#00e5b0;font-size:11px;background:rgba(0,229,176,0.1);padding:2px 7px;border-radius:6px;margin-left:4px;">Phase 4</span></div><div style="font-size:12px;color:#6b7280;margin-top:2px;">文書を検出したら自動シャッター</div></div></div>
   <div class="feat-card" style="animation:fade-up 0.5s ease 0.30s both;"><span style="font-size:20px;">📄</span><div><div style="font-size:14px;font-weight:600;">複数ページ → PDF結合</div><div style="font-size:12px;color:#6b7280;margin-top:2px;">何枚でも追加して1つのPDFに</div></div></div>
-  <div class="feat-card" style="animation:fade-up 0.5s ease 0.36s both;"><span style="font-size:20px;">🗂</span><div><div style="font-size:14px;font-weight:600;">スキャン履歴 <span style="color:#818cf8;font-size:11px;background:rgba(99,102,241,0.12);padding:2px 7px;border-radius:6px;margin-left:4px;">Phase 5</span></div><div style="font-size:12px;color:#6b7280;margin-top:2px;">IndexedDBにオフライン保存・管理</div></div></div>
+  <div class="feat-card" style="animation:fade-up 0.5s ease 0.36s both;"><span style="font-size:20px;">📝</span><div><div style="font-size:14px;font-weight:600;">Tesseract.js OCR <span style="color:#00e5b0;font-size:11px;background:rgba(0,229,176,0.1);padding:2px 7px;border-radius:6px;margin-left:4px;">完全無料</span></div><div style="font-size:12px;color:#6b7280;margin-top:2px;">APIキー不要・オフライン動作</div></div></div>
+  <div class="feat-card" style="animation:fade-up 0.5s ease 0.42s both;"><span style="font-size:20px;">🗂</span><div><div style="font-size:14px;font-weight:600;">スキャン履歴 <span style="color:#818cf8;font-size:11px;background:rgba(99,102,241,0.12);padding:2px 7px;border-radius:6px;margin-left:4px;">Phase 5</span></div><div style="font-size:12px;color:#6b7280;margin-top:2px;">IndexedDBにオフライン保存・管理</div></div></div>
 </div>
 
 <div id="home-error" style="display:none;width:100%;max-width:360px;margin-bottom:12px;" class="error-banner"></div>
@@ -225,7 +227,7 @@
     <div style="width:220px;height:3px;background:#1e1e35;border-radius:2px;overflow:hidden;margin:0 auto;">
       <div id="proc-bar" style="height:100%;background:linear-gradient(to right,#00e5b0,#6366f1);width:0%;border-radius:2px;transition:width 0.4s ease;"></div>
     </div>
-    <p style="font-size:12px;color:#6b7280;margin-top:12px;">Claude AI が処理しています</p>
+    <p style="font-size:12px;color:#6b7280;margin-top:12px;">OpenCV.js が処理しています</p>
   </div>
 </div>
 
@@ -303,7 +305,8 @@
   <div class="scroll-body" style="padding:14px;">
     <div id="ocr-loading" style="display:none;flex-direction:column;align-items:center;padding:50px;gap:16px;">
       <div class="spinner" style="width:44px;height:44px;"></div>
-      <p style="color:#6b7280;font-size:14px;">Claude AI でテキストを認識中...</p>
+      <p style="color:#6b7280;font-size:14px;">Tesseract.js でテキストを認識中...</p>
+      <p style="color:#1e1e35;font-size:12px;">(初回は言語データのダウンロードがあります)</p>
     </div>
     <div id="ocr-content">
       <p id="ocr-text" style="margin:0;font-size:15px;line-height:1.85;color:#d0d0e8;white-space:pre-wrap;background:#0f0f1e;border:1px solid #1e1e35;border-radius:14px;padding:18px;min-height:160px;"></p>
@@ -753,26 +756,16 @@ const APP = (() => {
     document.getElementById('proc-bg').style.backgroundImage = `url(${dataUrl})`;
     setBar(0); showScreen('processing');
     try {
-      setBar(15);
-      const ai = await callClaude(dataUrl);
-      setBar(55);
       const img = await loadImg(dataUrl);
-      const W = img.width, H = img.height;
-      let corners = null;
-      if (ai.hasDocument !== false && ai.corners) {
-        const c = ai.corners;
-        corners = {
-          topLeft:     { x: c.topLeft.x * W,     y: c.topLeft.y * H },
-          topRight:    { x: c.topRight.x * W,    y: c.topRight.y * H },
-          bottomRight: { x: c.bottomRight.x * W, y: c.bottomRight.y * H },
-          bottomLeft:  { x: c.bottomLeft.x * W,  y: c.bottomLeft.y * H },
-        };
-      }
-      S.currentCorners = corners; S.currentQuality = ai.quality || 'unknown';
-      setBar(75);
+      setBar(20);
+      // OpenCV.jsでコーナー検出（APIなし）
+      const corners = S.cvReady ? detectCornersCV(img) : null;
+      S.currentCorners = corners;
+      S.currentQuality = corners ? 'good' : 'fair';
+      setBar(65);
       S.currentProcessed = corners
-        ? (S.cvReady ? await cvWarp(img, corners) : await simpleCrop(img, corners))
-        : dataUrl;
+        ? await cvWarp(img, corners)
+        : await simpleCrop(img, null);
       setBar(100);
       setTimeout(() => showReview(), 300);
     } catch(e) {
@@ -782,23 +775,66 @@ const APP = (() => {
 
   function setBar(v) { document.getElementById('proc-bar').style.width = v + '%'; }
 
-  async function callClaude(dataUrl) {
-    const base64 = dataUrl.split(',')[1];
-    const prompt = 'Analyze this document image. Return ONLY valid JSON:\n' +
-      '{"corners":{"topLeft":{"x":0.05,"y":0.05},"topRight":{"x":0.95,"y":0.05},"bottomRight":{"x":0.95,"y":0.95},"bottomLeft":{"x":0.05,"y":0.95}},"quality":"good","hasDocument":true}\n' +
-      'corners: fractions 0-1; quality: good/fair/poor; hasDocument: true if paper visible.';
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400,
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-          { type: 'text', text: prompt }
-        ]}]
-      })
-    });
-    const data = await res.json();
-    const raw = (data.content?.find(c=>c.type==='text')?.text||'{}').replace(/```json\n?|\n?```/g,'').trim();
-    try { return JSON.parse(raw); } catch { return { hasDocument: false, quality: 'unknown', corners: null }; }
+  // OpenCV.jsで文書コーナーを検出（フル解像度版）
+  function detectCornersCV(img) {
+    if (!window.cv) return null;
+    const cv = window.cv;
+    try {
+      // 処理速度のため800px幅にダウンスケール
+      const SCALE = Math.min(800 / img.width, 1);
+      const sw = Math.round(img.width * SCALE), sh = Math.round(img.height * SCALE);
+      const sc = document.createElement('canvas'); sc.width = sw; sc.height = sh;
+      sc.getContext('2d').drawImage(img, 0, 0, sw, sh);
+
+      const src = cv.imread(sc);
+      const gray = new cv.Mat(), blur = new cv.Mat(), edges = new cv.Mat();
+      const contours = new cv.MatVector(), hier = new cv.Mat();
+      const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+      cv.Canny(blur, edges, 40, 120);
+      cv.dilate(edges, edges, kernel);
+      cv.findContours(edges, contours, hier, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+
+      let bestQ = null, bestA = 0;
+      const minArea = sw * sh * 0.06;
+      for (let i = 0; i < contours.size(); i++) {
+        const cnt = contours.get(i);
+        const peri = cv.arcLength(cnt, true);
+        const approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+        if (approx.rows === 4 && cv.isContourConvex(approx)) {
+          const area = Math.abs(cv.contourArea(approx));
+          if (area > minArea && area > bestA) {
+            bestA = area;
+            // スケールを元解像度に戻す
+            const INV = 1 / SCALE;
+            bestQ = {
+              topLeft:     { x: 0, y: 0 },
+              topRight:    { x: 0, y: 0 },
+              bottomRight: { x: 0, y: 0 },
+              bottomLeft:  { x: 0, y: 0 },
+            };
+            const pts4 = [
+              { x: approx.data32S[0]*INV, y: approx.data32S[1]*INV },
+              { x: approx.data32S[2]*INV, y: approx.data32S[3]*INV },
+              { x: approx.data32S[4]*INV, y: approx.data32S[5]*INV },
+              { x: approx.data32S[6]*INV, y: approx.data32S[7]*INV },
+            ];
+            const cx = pts4.reduce((s,p)=>s+p.x,0)/4, cy = pts4.reduce((s,p)=>s+p.y,0)/4;
+            bestQ.topLeft     = pts4.find(p=>p.x<cx&&p.y<cy)     || pts4[0];
+            bestQ.topRight    = pts4.find(p=>p.x>=cx&&p.y<cy)    || pts4[1];
+            bestQ.bottomRight = pts4.find(p=>p.x>=cx&&p.y>=cy)   || pts4[2];
+            bestQ.bottomLeft  = pts4.find(p=>p.x<cx&&p.y>=cy)    || pts4[3];
+          }
+        }
+        approx.delete(); cnt.delete();
+      }
+      src.delete(); gray.delete(); blur.delete(); edges.delete();
+      contours.delete(); hier.delete(); kernel.delete();
+      return bestQ;
+    } catch(e) { return null; }
   }
 
   function cvWarp(img, corners) {
@@ -825,13 +861,20 @@ const APP = (() => {
 
   function simpleCrop(img, corners) {
     return new Promise(resolve => {
-      const xs=[corners.topLeft.x,corners.topRight.x,corners.bottomRight.x,corners.bottomLeft.x];
-      const ys=[corners.topLeft.y,corners.topRight.y,corners.bottomRight.y,corners.bottomLeft.y];
-      const x1=Math.max(0,Math.min(...xs)),y1=Math.max(0,Math.min(...ys));
-      const cw=Math.max(Math.max(...xs)-x1,1),ch=Math.max(Math.max(...ys)-y1,1);
-      const c=document.createElement('canvas');c.width=cw;c.height=ch;
-      const ctx=c.getContext('2d');ctx.filter='contrast(1.1) brightness(1.05)';
-      ctx.drawImage(img,x1,y1,cw,ch,0,0,cw,ch);
+      const c=document.createElement('canvas');
+      if (corners) {
+        const xs=[corners.topLeft.x,corners.topRight.x,corners.bottomRight.x,corners.bottomLeft.x];
+        const ys=[corners.topLeft.y,corners.topRight.y,corners.bottomRight.y,corners.bottomLeft.y];
+        const x1=Math.max(0,Math.min(...xs)),y1=Math.max(0,Math.min(...ys));
+        const cw=Math.max(Math.max(...xs)-x1,1),ch=Math.max(Math.max(...ys)-y1,1);
+        c.width=cw;c.height=ch;
+        const ctx=c.getContext('2d');ctx.filter='contrast(1.1) brightness(1.05)';
+        ctx.drawImage(img,x1,y1,cw,ch,0,0,cw,ch);
+      } else {
+        c.width=img.width;c.height=img.height;
+        const ctx=c.getContext('2d');ctx.filter='contrast(1.08) brightness(1.03)';
+        ctx.drawImage(img,0,0);
+      }
       resolve(c.toDataURL('image/jpeg',0.95));
     });
   }
@@ -1004,23 +1047,41 @@ const APP = (() => {
     finally{btn.textContent=orig;btn.disabled=false;}
   }
 
-  // ── OCR ────────────────────────────────────────
+  // ── OCR (Tesseract.js) ─────────────────────────
   function openOCR(){
     if(!S.pages.length)return;
     const o=document.getElementById('ocr-overlay'),l=document.getElementById('ocr-loading'),c=document.getElementById('ocr-content'),t=document.getElementById('ocr-text');
     o.classList.add('active');l.style.display='flex';c.style.display='none';t.textContent='';
-    runOCR().then(text=>{S.ocrText=text;l.style.display='none';c.style.display='block';t.textContent=text;})
+    // 進捗メッセージ更新
+    const progEl = l.querySelector('p');
+    if (progEl) progEl.textContent = 'Tesseract.js でテキストを認識中...';
+    runOCR(prog => { if (progEl) progEl.textContent = prog; })
+      .then(text=>{S.ocrText=text;l.style.display='none';c.style.display='block';t.textContent=text;})
       .catch(e=>{l.style.display='none';c.style.display='block';t.textContent='OCRエラー: '+e.message;});
   }
 
-  async function runOCR(){
-    const content=[],pages=S.pages.slice(0,5);
-    for(const p of pages)content.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:p.processed.split(',')[1]}});
-    const extra=pages.length>1?`これは${pages.length}ページのドキュメントです。各ページのテキストを「--- ページN ---」で区切って抽出してください。`:'';
-    content.push({type:'text',text:extra+'この文書画像に含まれるすべてのテキストを正確に抽出してください。レイアウトと改行を保持し、テキストのみ返してください。'});
-    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4096,messages:[{role:'user',content}]})});
-    const data=await res.json();
-    return data.content?.find(c=>c.type==='text')?.text||'テキストを認識できませんでした。';
+  async function runOCR(onProgress){
+    if (typeof Tesseract === 'undefined') throw new Error('Tesseract.js が読み込まれていません');
+    const pages = S.pages.slice(0, 5);
+    const results = [];
+
+    for (let i = 0; i < pages.length; i++) {
+      if (onProgress) onProgress(`ページ ${i+1}/${pages.length} を認識中...`);
+      const { data: { text } } = await Tesseract.recognize(
+        pages[i].processed,
+        'jpn+eng',   // 日本語＋英語
+        {
+          logger: m => {
+            if (m.status === 'recognizing text' && onProgress) {
+              const pct = Math.round(m.progress * 100);
+              onProgress(`ページ ${i+1}/${pages.length}: ${pct}%`);
+            }
+          }
+        }
+      );
+      results.push(pages.length > 1 ? `--- ページ${i+1} ---\n${text.trim()}` : text.trim());
+    }
+    return results.join('\n\n') || 'テキストを認識できませんでした。';
   }
 
   function closeOCR(){document.getElementById('ocr-overlay').classList.remove('active');}
